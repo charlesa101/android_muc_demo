@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:orientation="vertical"
+	>
+
+
+	<RelativeLayout
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:layout_centerInParent="true"
+		android:padding="20dp"
+		>
+
+		<TextView
+			android:id="@+id/txtlabel"
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content"
+			android:gravity="center"
+			android:textSize="20sp"
+			android:paddingBottom="20dp"
+			android:text="Please provide login credentials"
+			android:textColor="@android:color/holo_blue_dark"
+			/>
+
+
+		<EditText
+			android:id="@+id/txtusername"
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content"
+			android:padding="20dp"
+			android:layout_below="@+id/txtlabel"
+			android:hint="Username"
+			/>
+
+		<EditText
+			android:id="@+id/txtpassword"
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content"
+			android:padding="20dp"
+			android:layout_below="@+id/txtusername"
+			android:hint="Password"
+			/>
+
+		<TextView
+			android:id="@+id/txtlogin"
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content"
+			android:layout_below="@+id/txtpassword"
+			android:gravity="center"
+			android:padding="20dp"
+			android:textSize="20sp"
+			android:textStyle="bold"
+			android:text="Log In"
+			/>
+	</RelativeLayout>
+</RelativeLayout>
