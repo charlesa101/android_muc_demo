@@ -12,12 +12,16 @@ import com.softwarejoint.chatdemo.AppPrefs.AppPreferences;
 import com.softwarejoint.chatdemo.DBHelper.AppDbHelper;
 import com.softwarejoint.chatdemo.MainApplication;
 import com.softwarejoint.chatdemo.constant.AppConstant;
+import com.softwarejoint.chatdemo.interfaces.ChatCallbacks;
 import com.softwarejoint.chatdemo.interfaces.GroupChatCallBacks;
 
 import org.jivesoftware.smack.SmackException;
 import org.jivesoftware.smack.StanzaListener;
 import org.jivesoftware.smack.XMPPConnection;
 import org.jivesoftware.smack.XMPPException;
+import org.jivesoftware.smack.chat.Chat;
+import org.jivesoftware.smack.chat.ChatMessageListener;
+import org.jivesoftware.smack.packet.DefaultExtensionElement;
 import org.jivesoftware.smack.packet.Message;
 import org.jivesoftware.smack.packet.Stanza;
 import org.jivesoftware.smack.provider.ProviderManager;
@@ -25,6 +29,7 @@ import org.jivesoftware.smack.roster.Roster;
 import org.jivesoftware.smack.tcp.XMPPTCPConnection;
 import org.jivesoftware.smack.tcp.XMPPTCPConnectionConfiguration;
 import org.jivesoftware.smackx.address.provider.MultipleAddressesProvider;
+import org.jivesoftware.smackx.chatstates.ChatState;
 import org.jivesoftware.smackx.chatstates.ChatStateManager;
 import org.jivesoftware.smackx.chatstates.packet.ChatStateExtension;
 import org.jivesoftware.smackx.commands.provider.AdHocCommandDataProvider;
@@ -46,6 +51,7 @@ import org.jivesoftware.smackx.ping.PingManager;
 import org.jivesoftware.smackx.ping.provider.PingProvider;
 import org.jivesoftware.smackx.privacy.provider.PrivacyProvider;
 import org.jivesoftware.smackx.pubsub.provider.EventProvider;
+import org.jivesoftware.smackx.receipts.DeliveryReceipt;
 import org.jivesoftware.smackx.receipts.DeliveryReceiptManager;
 import org.jivesoftware.smackx.receipts.DeliveryReceiptRequest;
 import org.jivesoftware.smackx.search.UserSearch;
@@ -151,7 +157,7 @@ public class XMPPManager {
         PingManager.setDefaultPingInterval(10);
         PingManager.getInstanceFor(sXmppConnection);
         DeliveryReceiptManager mDeliveryReceiptManager = DeliveryReceiptManager.getInstanceFor(sXmppConnection);
-        mDeliveryReceiptManager.setAutoReceiptMode(DeliveryReceiptManager.AutoReceiptMode.always);
+        mDeliveryReceiptManager.setAutoReceiptMode(DeliveryReceiptManager.AutoReceiptMode.disabled);
         mDeliveryReceiptManager.dontAutoAddDeliveryReceiptRequests();
         Roster.getInstanceFor(sXmppConnection).setSubscriptionMode(Roster.SubscriptionMode.accept_all);
         ChatStateManager.getInstance(sXmppConnection);
@@ -165,26 +171,41 @@ public class XMPPManager {
 
     private void registerReceiver() {
 
-        //TODO: add listeners for xmpp events
-
 	    sXmppConnection.addStanzaAcknowledgedListener(new StanzaListener() {
 		    @Override
 		    public void processPacket(Stanza packet) throws SmackException.NotConnectedException
 		    {
-			    // acknowledgement for stanza sent to server outgoing
-
 			    if(packet instanceof Message){
 				    Message message = (Message) packet;
+
 				    if(message.getType() == Message.Type.groupchat){
-					    //show single tick
+					    String groupId = XMPPUtils.getGroupId(message.getTo());
+					    String userId = MainApplication.getInstance().getAppPreferences().getUserName();
+					    AppDbHelper appDbHelper = MainApplication.getInstance().getAppDBHelper();
+					    appDbHelper.updateMessageStatus(groupId, userId, message.getStanzaId(),
+							    AppDbHelper.MSG_STATUS_SENT_TO_SERVER);
+					    XMPPUtils.onChatReceivedUpdateUI(groupId, userId, null, null, message.getStanzaId());
+				    }else if(message.getType() == Message.Type.chat){
+					    String userId = XMPPUtils.getUserJID(message.getTo());
+					    AppDbHelper appDbHelper = MainApplication.getInstance().getAppDBHelper();
+					    appDbHelper.updateMessageStatus(null, userId, message.getStanzaId(),
+							    AppDbHelper.MSG_STATUS_SENT_TO_SERVER);
+					    XMPPUtils.onChatReceivedUpdateUI(null, userId, null, null, message.getStanzaId());
 				    }
 			    }
 		    }
 	    });
 
-	    //TODO: add delivery and read receipts
+	    sXmppConnection.addSyncStanzaListener(
+			    new ReceiptListener(DeliveryReceipt.ELEMENT, AppDbHelper.MSG_STATUS_SENT_TO_DEVICE),
+			    XMPPUtils.INCOMING_DELIVERY_RECEIPT);
 
-	    // incoming group message
+	    sXmppConnection.addSyncStanzaListener(
+			    new ReceiptListener(ReceiptListener.READ_ELEMENT, AppDbHelper.MSG_STATUS_READ_BY_DEVICE),
+			    XMPPUtils.INCOMING_READ_RECEIPT);
+
+	    sXmppConnection.addAsyncStanzaListener(new PrivateIncomingMessage(), XMPPUtils.INCOMING_CHAT_MESSAGE);
+
 	    sXmppConnection.addAsyncStanzaListener(new GroupIncomingMessage(), XMPPUtils.INCOMING_GROUP_MESSAGE);
     }
 
@@ -197,33 +218,128 @@ public class XMPPManager {
         }
     }
 
-	// group chat functions star
+	//utility functions start
 
-	/** call this when a group activity is launched
-	 *
-	 * */
+	public boolean sendDeliveryReceipt(@Nullable String groupId, @NonNull String userId, @NonNull String messageId){
+		Message message = new Message();
+		message.addExtension(new DeliveryReceipt(messageId));
+		message.setSubject(groupId);
+		Chat chat = XMPPUtils.getOrCreateChat(userId, sXmppConnection);
+		try
+		{
+			chat.sendMessage(message);
+		}catch (SmackException.NotConnectedException e){
+			e.printStackTrace();
+			return false;
+		}
+		return true;
+	}
 
-	public boolean sendMessageToGroup(String groupId, String body, XMPPUtils.XMPP_MESSAGE_TYPE bodyType){
-		MultiUserChat multiUserChat = XMPPUtils.getMultiUserChat(sXmppConnection, groupId);
+	public boolean sendReadReceipt(@Nullable String groupId, @NonNull String userId, @NonNull String messageId){
+		Message message = new Message();
+		DefaultExtensionElement readReceiptElement = new DefaultExtensionElement(ReceiptListener.READ_ELEMENT, DeliveryReceipt.NAMESPACE);
+		readReceiptElement.setValue(ReceiptListener.TIMESTAMP, String.valueOf(System.currentTimeMillis()));
+		message.addExtension(readReceiptElement);
+		message.setSubject(groupId);
+		Chat chat = XMPPUtils.getOrCreateChat(userId, sXmppConnection);
+		try
+		{
+			chat.sendMessage(message);
+		}catch (SmackException.NotConnectedException e){
+			e.printStackTrace();
+			return false;
+		}
+		return true;
+	}
+
+	public void sendTypingNotification(String id, ChatState chatState, boolean isGroup)
+			throws SmackException.NotConnectedException{
+
+		if(isGroup){
+			Message typingNotification = new Message();
+			typingNotification.addExtension(new ChatStateExtension(chatState));
+			sendMucStanza(id, typingNotification);
+		}else{
+			Chat chat = XMPPUtils.getOrCreateChat(id, sXmppConnection);
+			ChatStateManager chatStateManager = ChatStateManager.getInstance(sXmppConnection);
+			chatStateManager.setCurrentState(chatState, chat);
+		}
+
+	}
+
+	public boolean sendChatStanza(String id, String body, XMPPUtils.XMPP_MESSAGE_TYPE bodyType, boolean isGroup){
+
 		Message message = new Message();
 		message.setBody(body);
 		message.addExtension(new DeliveryReceiptRequest());
 		XMPPUtils.addMessageBodyType(message, bodyType);
 		AppDbHelper appDbHelper = MainApplication.getInstance().getAppDBHelper();
-		try
-		{
-			multiUserChat.sendMessage(message);
-			appDbHelper.saveNewGroupChatMessage(groupId, null, body, bodyType, true, message.getStanzaId());
-		}
-		catch (Exception e)
-		{
-			e.printStackTrace();
 
-			appDbHelper.addOfflineMessage(groupId, body, bodyType);
+		try{
+			if(isGroup){
+				appDbHelper.saveNewChatMessage(id, null, body, bodyType, true, message.getStanzaId());
+				return sendMucStanza(id, message);
+			}else{
+				appDbHelper.saveNewChatMessage(null, id, body, bodyType, true, message.getStanzaId());
+				Chat chat = XMPPUtils.getOrCreateChat(id, sXmppConnection);
+				chat.sendMessage(message);
+				return true;
+			}
+		}catch (Exception ex){
+			ex.printStackTrace();
 		}
 
+		appDbHelper.addOfflineMessage(id, body, bodyType, false);
 		return false;
 	}
+
+	//utility functions end
+
+	//private chat functions start
+
+	public Chat startChat(String userId, ChatCallbacks chatCallbacks){
+		Chat chat = XMPPUtils.getOrCreateChat(userId, sXmppConnection);
+		for(ChatMessageListener chatMessageListener: chat.getListeners()){
+			if(chatMessageListener instanceof ChatCallbacks){
+				chat.removeMessageListener(chatMessageListener);
+			}
+		}
+
+		chat.addMessageListener(chatCallbacks);
+		try
+		{
+			sendTypingNotification(userId, ChatState.active, false);
+		}
+		catch (SmackException.NotConnectedException e)
+		{
+			e.printStackTrace();
+			return null;
+		}
+		return chat;
+	}
+
+	public void closeChat(String userId){
+		Chat chat = XMPPUtils.getOrCreateChat(userId, sXmppConnection);
+		try
+		{
+			sendTypingNotification(userId, ChatState.gone, false);
+		}
+		catch (SmackException.NotConnectedException e)
+		{
+			e.printStackTrace();
+		}
+		chat.close();
+	}
+
+
+
+	// private chat functions end
+
+	// group chat functions start
+
+	/** call this when a group activity is launched
+	 *
+	 * */
 
  	public void addGroupCallBacks(String groupId, GroupChatCallBacks groupChatCallBacks){
 	    MultiUserChat multiUserChat = XMPPUtils.getMultiUserChat(sXmppConnection, groupId);
@@ -389,20 +505,19 @@ public class XMPPManager {
 		return false;
 	}
 
-	// group chat functions end
-
-	private boolean sendStanza(Stanza stanza) {
-		try {
-			sXmppConnection.sendStanza(stanza);
-		} catch (SmackException.NotConnectedException e) {
-			e.printStackTrace();
-			return false;
-		} catch (NullPointerException ex) {
-			ex.printStackTrace();
-			return false;
+	private boolean sendMucStanza(String groupId, Object message) throws SmackException.NotConnectedException
+	{
+		MultiUserChat multiUserChat = XMPPUtils.getMultiUserChat(sXmppConnection, groupId);
+		if(message instanceof Message){
+			multiUserChat.sendMessage((Message) message);
+		}else{
+			//todo handle text message
 		}
+
 		return true;
 	}
+
+	// group chat functions end
 
     public boolean isAlive() {
         return (sXmppConnection != null

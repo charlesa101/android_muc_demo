@@ -41,4 +41,9 @@ public abstract class BaseActivity extends FragmentActivity {
 	                                       String reason, String password, Message message) {
 		Log.i(TAG, "invitations received for group: " + room.getRoom() + " by : " + inviter);
 	}
+
+	public boolean isShowNotification(String groupId, String userId)
+	{
+		return true;
+	}
 }

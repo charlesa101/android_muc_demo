@@ -29,9 +29,6 @@ import java.util.TimeZone;
 import java.util.UUID;
 
 
-/**
- * Created by soni on 24-07-2015.
- */
 public class AppUtils {
 
     //Check for connectivity

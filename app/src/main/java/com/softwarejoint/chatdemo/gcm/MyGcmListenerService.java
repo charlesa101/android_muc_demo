@@ -17,6 +17,8 @@ import android.os.Vibrator;
 import android.support.v4.app.NotificationCompat;
 
 import com.google.android.gms.gcm.GcmListenerService;
+import com.softwarejoint.chatdemo.Activity.ChatActivity;
+import com.softwarejoint.chatdemo.Activity.GroupListActivity;
 import com.softwarejoint.chatdemo.MainApplication;
 import com.softwarejoint.chatdemo.constant.AppConstant;
 
@@ -29,7 +31,14 @@ public class MyGcmListenerService extends GcmListenerService {
     @Override
     public void onMessageReceived(String from, Bundle data) {
         // send notification
+	    if(data == null) return;
 
+	    String groupId = data.getString(AppConstant.GROUP_ID);
+	    String userId = data.getString(AppConstant.USER_ID);
+	    String message = data.getString(AppConstant.MSG_DATA);
+
+	    Class<?> cls = (groupId == null) ? ChatActivity.class : GroupListActivity.class;
+	    sendNotification(cls, groupId, userId, message);
     }
 
     /**
@@ -37,11 +46,11 @@ public class MyGcmListenerService extends GcmListenerService {
      *
      * @param message GCM message received.
      */
-    private void sendNotification(Class<?> cls, String userId, String message) {
-        MyGcmListenerService.sendNotification(getApplicationContext(), cls, userId, message);
+    private void sendNotification(Class<?> cls, String groupId, String userId, String message) {
+        MyGcmListenerService.sendNotification(getApplicationContext(), cls, groupId, userId, message);
     }
 
-    public static void sendNotification(Context context, Class<?> cls, String userId, String message){
+    public static void sendNotification(Context context, Class<?> cls, String groupId, String userId, String message){
         if(userId.equalsIgnoreCase(MainApplication.getInstance().getAppPreferences().getUserName())){
             return;
         }
@@ -62,7 +71,10 @@ public class MyGcmListenerService extends GcmListenerService {
             Intent intent = new Intent(context, cls);
             intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
             intent.putExtra(AppConstant.IS_NOTIFICATION, AppConstant.IS_NOTIFICATION);
-            intent.putExtra(AppConstant.USERID, userId);
+	        if(groupId != null){
+		        intent.putExtra(AppConstant.GROUP_ID, groupId);
+	        }
+            intent.putExtra(AppConstant.USER_ID, userId);
             PendingIntent pendingIntent = PendingIntent.getActivity(context, MyGcmListenerService.REQUEST_CODE, intent,
                     PendingIntent.FLAG_ONE_SHOT);
             notificationBuilder.setContentIntent(pendingIntent);

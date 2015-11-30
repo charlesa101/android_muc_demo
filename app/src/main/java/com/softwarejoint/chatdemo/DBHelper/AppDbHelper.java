@@ -203,12 +203,22 @@ public class AppDbHelper extends SQLiteOpenHelper {
         //TODO: clear db unread count
     }
 
-	public void saveNewGroupChatMessage(String groupId, @Nullable String userId, String body,
+	public void saveNewChatMessage(@Nullable String groupId, @Nullable String userId, String body,
+	                               XMPPUtils.XMPP_MESSAGE_TYPE bodyType, boolean isOutGoing, String messageId){
+
+		if(groupId == null){
+			//save chat message outgoing
+		}else if(groupId != null){
+			saveNewGroupChatMessage(groupId, userId, body, bodyType, isOutGoing, messageId);
+		}
+	}
+
+	private void saveNewGroupChatMessage(@Nullable String groupId, @Nullable String userId, String body,
 	                                    XMPPUtils.XMPP_MESSAGE_TYPE bodyType, boolean isOutGoing, String messageId)
 	{
 		userId = (userId == null) ? mPrefs.getUserName() : userId;
 		//TODO: insert group chat message into database;
-		int msgStatus = isOutGoing ? MSG_STATUS_SENT_TO_SERVER : MSG_STATUS_RECEIVED;
+		int msgStatus = isOutGoing ? MSG_STATUS_TO_SEND : MSG_STATUS_RECEIVED;
 
 		ContentValues values = new ContentValues();
 		values.put(GroupMessageTable.groupId, groupId);
@@ -226,7 +236,14 @@ public class AppDbHelper extends SQLiteOpenHelper {
 
 	}
 
-	public void addOfflineMessage(String groupId, String body, XMPPUtils.XMPP_MESSAGE_TYPE bodyType)
+	public void addOfflineMessage(String id, String body,
+	                              XMPPUtils.XMPP_MESSAGE_TYPE bodyType, boolean isGroup)
+	{
+
+
+	}
+
+	public void updateMessageStatus(String groupId, String userId, String messageId, int msgReadStatusDeliveryReportSent)
 	{
 
 

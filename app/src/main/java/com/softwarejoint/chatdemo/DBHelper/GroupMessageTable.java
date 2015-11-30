@@ -8,7 +8,6 @@ public class GroupMessageTable{
 	private final static int IS_OUTGOING = 1;
 
 	public static final String TABLE_NAME = "group_messages";
-
 	public static final String id = "id";
 	public static final String groupId = "groupId";
 	public static final String isOutGoing = "direction";

@@ -7,7 +7,6 @@ import android.os.Handler;
 import com.softwarejoint.chatdemo.AppPrefs.AppPreferences;
 import com.softwarejoint.chatdemo.DBHelper.AppDbHelper;
 import com.softwarejoint.chatdemo.constant.AppConstant;
-import com.softwarejoint.chatdemo.gcm.RegistrationIntentService;
 import com.softwarejoint.chatdemo.utils.AppUtils;
 import com.softwarejoint.chatdemo.xmpp.XMPPManager;
 
@@ -32,7 +31,7 @@ public class MainApplication extends Application {
         if(mPrefs.getRegitrationState() == AppConstant.ACCOUNT_STATE_PROFILE_SET){
 
             if(AppUtils.isConnectingToInternet(this)){
-                startService(new Intent(this,RegistrationIntentService.class));
+             //   startService(new Intent(this,RegistrationIntentService.class));
             }
 
             mAppDBHelper = AppDbHelper.getInstance(getApplicationContext());

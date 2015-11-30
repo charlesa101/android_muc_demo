@@ -31,13 +31,13 @@ public class AppConstant {
 
     // for xmpp notification broadcasts
 
-    public static final String UNREAD_RECEIVER_EVENT = "unread-msg-event";
     public static final String RECEIVER_EVENT = "msg-event";
     public static final String CHAT_EVENT = "chat-event";
 
-    public static final String USERID = "user_id";
-    public static final String MSG_TYPE = "msgType";
-    public static final String MSG_DATA = "msgData";
+    public static final String USER_ID = "user_id";
+	public static final String GROUP_ID = "user_id";
+    public static final String BODY_TYPE = "bodyType";
+    public static final String MSG_DATA = "data";
 
     public static final String DEFAULT_STATUS = "New to app";
 
@@ -60,10 +60,6 @@ public class AppConstant {
 
 
     public static final int ACCOUNT_STATE_PROFILE_SET = 2;
-
-    public static final long LAST_SEEN_HIDE = 0;
-    public static final int DEFAULT_TIME_BOMB_DURATION = 0;
-    public static final String EXPIRED_MESSAGE_TEXT_EMPTY = "";
 
     public static final String IS_NOTIFICATION = "IS_NOTIFICATION";
 

@@ -1,13 +1,23 @@
 package com.softwarejoint.chatdemo.xmpp;
 
 import android.content.Context;
+import android.content.Intent;
+import android.support.v4.content.LocalBroadcastManager;
 import android.telephony.TelephonyManager;
 
+import com.softwarejoint.chatdemo.Activity.ChatActivity;
+import com.softwarejoint.chatdemo.Activity.GroupListActivity;
 import com.softwarejoint.chatdemo.AppPrefs.AppPreferences;
+import com.softwarejoint.chatdemo.DBHelper.AppDbHelper;
+import com.softwarejoint.chatdemo.MainApplication;
 import com.softwarejoint.chatdemo.constant.AppConstant;
+import com.softwarejoint.chatdemo.gcm.MyGcmListenerService;
 
+import org.jivesoftware.smack.chat.Chat;
+import org.jivesoftware.smack.chat.ChatManager;
 import org.jivesoftware.smack.filter.AndFilter;
 import org.jivesoftware.smack.filter.MessageTypeFilter;
+import org.jivesoftware.smack.filter.StanzaExtensionFilter;
 import org.jivesoftware.smack.filter.StanzaFilter;
 import org.jivesoftware.smack.filter.StanzaTypeFilter;
 import org.jivesoftware.smack.packet.DefaultExtensionElement;
@@ -32,6 +42,7 @@ import org.jivesoftware.smackx.offline.packet.OfflineMessageRequest;
 import org.jivesoftware.smackx.ping.provider.PingProvider;
 import org.jivesoftware.smackx.privacy.provider.PrivacyProvider;
 import org.jivesoftware.smackx.pubsub.provider.EventProvider;
+import org.jivesoftware.smackx.receipts.DeliveryReceipt;
 import org.jivesoftware.smackx.receipts.DeliveryReceiptRequest;
 import org.jivesoftware.smackx.search.UserSearch;
 import org.jivesoftware.smackx.sharedgroups.packet.SharedGroupsInfo;
@@ -79,6 +90,21 @@ public class XMPPUtils
 		}
 	}
 
+	public static StanzaFilter INCOMING_DELIVERY_RECEIPT =
+			new AndFilter(StanzaTypeFilter.MESSAGE,
+					new AndFilter(MessageTypeFilter.CHAT,
+							new StanzaExtensionFilter(DeliveryReceipt.ELEMENT, DeliveryReceipt.NAMESPACE)));
+
+	public static StanzaFilter INCOMING_READ_RECEIPT =
+			new AndFilter(StanzaTypeFilter.MESSAGE,
+					new AndFilter(MessageTypeFilter.CHAT,
+							new StanzaExtensionFilter(ReceiptListener.READ_ELEMENT, DeliveryReceipt.NAMESPACE)));
+
+	public static StanzaFilter INCOMING_CHAT_MESSAGE =
+			new AndFilter(StanzaTypeFilter.MESSAGE,
+					new AndFilter(MessageTypeFilter.CHAT,
+							new StanzaExtensionFilter(DeliveryReceiptRequest.ELEMENT, DeliveryReceipt.NAMESPACE)));
+
 	public static StanzaFilter INCOMING_GROUP_MESSAGE =
 			new AndFilter(StanzaTypeFilter.MESSAGE, MessageTypeFilter.GROUPCHAT);
 
@@ -118,6 +144,24 @@ public class XMPPUtils
 		return XMPP_MESSAGE_TYPE.getMsgTypeByVal(bodyType);
 	}
 
+	public static String getThreadId(String userId){
+		String myUserId = MainApplication.getInstance().getAppPreferences().getUserName();
+		String myJID = XMPPUtils.getUserJID(myUserId);
+		String userJID = XMPPUtils.getUserJID(userId);
+		return (myJID.compareTo(userJID) > 0) ? (userJID + "-" + myJID) : (myJID + "-" + userJID);
+	}
+
+	public static Chat getOrCreateChat(String userId, XMPPTCPConnection sXmppConnection){
+		String jid = userId.contains("@") ?  userId : XMPPUtils.getUserJID(userId);
+		String threadId = XMPPUtils.getThreadId(userId);
+		ChatManager chatManager = ChatManager.getInstanceFor(sXmppConnection);
+		Chat chat = chatManager.getThreadChat(threadId);
+		if(chat == null){
+			chat = chatManager.createChat(jid, threadId, null);
+		}
+		return chat;
+	}
+
 	public static MultiUserChat getMultiUserChat(XMPPTCPConnection xmpptcpConnection, String groupId){
 		String roomJID = XMPPUtils.getRoomJID(groupId);
 		MultiUserChatManager multiUserChatManager = MultiUserChatManager.getInstanceFor(xmpptcpConnection);
@@ -142,6 +186,53 @@ public class XMPPUtils
 		}
 
 		return resourceName;
+	}
+
+	public static void onChatReceivedUpdateUI(String groupId, String userId, String body,
+	                                          XMPPUtils.XMPP_MESSAGE_TYPE bodyType, String messageId) {
+
+		if(bodyType != null && body != null){
+			AppDbHelper appDbHelper = MainApplication.getInstance().getAppDBHelper();
+			appDbHelper.saveNewChatMessage(groupId, userId, body, bodyType, false, messageId);
+
+			if(MainApplication.getInstance().getXMPPManager().sendDeliveryReceipt(groupId, userId, messageId)){
+				appDbHelper.updateMessageStatus(groupId, userId, messageId, AppDbHelper.MSG_READ_STATUS_DELIVERY_REPORT_SENT);
+			}
+		}
+
+		MainApplication mainApplication = MainApplication.getInstance();
+
+		if(body != null
+				&& (!mainApplication.isForeGround() || mainApplication.getCurrentActivity().isShowNotification(groupId, userId))){
+
+			if(groupId == null){
+				MyGcmListenerService.sendNotification(MainApplication.getInstance(), ChatActivity.class, groupId, userId, body);
+			}else{
+				MyGcmListenerService.sendNotification(MainApplication.getInstance(), GroupListActivity.class, groupId, userId, body);
+			}
+
+		}
+
+		if (mainApplication.isForeGround()) {
+			Intent intent = new Intent(AppConstant.CHAT_EVENT);
+			if(groupId != null){
+				intent.putExtra(AppConstant.GROUP_ID, groupId);
+			}
+
+			if(userId != null){
+				intent.putExtra(AppConstant.USER_ID, userId);
+			}
+
+			if(body != null && body.length() > 0){
+				intent.putExtra(AppConstant.MSG_DATA, body);
+			}
+
+			if(bodyType != null){
+				intent.putExtra(AppConstant.BODY_TYPE, bodyType);
+			}
+
+			LocalBroadcastManager.getInstance(mainApplication).sendBroadcast(intent);
+		}
 	}
 
 	public static void configure() {
@@ -181,7 +272,6 @@ public class XMPPUtils
 		ProviderManager.addExtensionProvider("gone",
 				"http://jabber.org/protocol/chatstates",
 				new ChatStateExtension.Provider());
-
 
 		// Group Chat Invitations
 		ProviderManager.addExtensionProvider("x", "jabber:x:conference",
