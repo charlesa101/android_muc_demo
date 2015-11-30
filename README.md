@@ -1,10 +1,27 @@
-# android_chat_demo
+# Smack Chat
 
-android chat demo raw project structure.
+## Features
 
-users android studio, smack 4.0
+* private chat
+* custom privacy policy
+* user avatar
+* Create group/leave group/join group
+* group invitations
+* Typing notifications for both group/private chat
+* Last seen
+* Chat backup
+* Media sharing : audio/video/image/documents
+* Audio/Video call support
+* GCM notifications for offline messages
 
-support for gcm notifications, etc.
+## Library
+
+* SMACK 4.0 customized (not included in this git)
+
+## Server
+
+* MongooseIM 1.6.0 customized (not included in this git)
+* No plans of making it public
 
 # Contributors
 
